@@ -180,7 +180,7 @@ export default function UploadStep({ onComplete }: Props) {
 
           <button
             type="submit"
-            disabled={pendingCount === 0}
+            disabled={pendingCount === 0 || !activeSentColumn.trim()}
             className="px-4 py-2 bg-green-600 text-white rounded-md disabled:opacity-50"
           >
             Continue

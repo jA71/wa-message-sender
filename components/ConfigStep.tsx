@@ -27,10 +27,12 @@ export default function ConfigStep({ onComplete }: Props) {
   useEffect(() => {
     const saved = localStorage.getItem(LS_KEY);
     if (!saved) return;
-    const data = JSON.parse(saved) as Partial<{ phoneNumberId: string; wabaId: string; accessToken: string }>;
-    if (data.phoneNumberId) setPhoneNumberId(data.phoneNumberId);
-    if (data.wabaId) setWabaId(data.wabaId);
-    if (data.accessToken) setAccessToken(data.accessToken);
+    try {
+      const data = JSON.parse(saved) as { phoneNumberId?: string; wabaId?: string; accessToken?: string };
+      if (data.phoneNumberId) setPhoneNumberId(data.phoneNumberId);
+      if (data.wabaId) setWabaId(data.wabaId);
+      if (data.accessToken) setAccessToken(data.accessToken);
+    } catch { /* ignore corrupt localStorage value */ }
   }, []);
 
   const canLoad = phoneNumberId.trim() && wabaId.trim() && accessToken.trim();

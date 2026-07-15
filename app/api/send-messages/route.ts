@@ -28,7 +28,12 @@ export async function POST(request: NextRequest) {
     return new Response("Missing file or config", { status: 400 });
   }
 
-  const config = JSON.parse(configRaw) as SendConfig;
+  let config: SendConfig;
+  try {
+    config = JSON.parse(configRaw) as SendConfig;
+  } catch {
+    return new Response("Invalid config JSON", { status: 400 });
+  }
   const text = await file.text();
   let { headers, rows } = parseCSV(text);
 

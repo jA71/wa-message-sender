@@ -43,57 +43,83 @@ export default function SendStep({ config }: Props) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [done, setDone] = useState(false);
   const [csvBase64, setCsvBase64] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   async function startSending() {
     setStarted(true);
-    const formData = new FormData();
-    formData.append(
-      "file",
-      new Blob([config.csvText], { type: "text/csv" }),
-      "contacts.csv"
-    );
-    formData.append(
-      "config",
-      JSON.stringify({
-        phoneNumberId: config.phoneNumberId,
-        accessToken: config.accessToken,
-        templateName: config.templateName,
-        templateLanguage: config.templateLanguage,
-        phoneColumn: config.phoneColumn,
-        sentColumn: config.sentColumn,
-      })
-    );
+    try {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([config.csvText], { type: "text/csv" }),
+        "contacts.csv"
+      );
+      formData.append(
+        "config",
+        JSON.stringify({
+          phoneNumberId: config.phoneNumberId,
+          accessToken: config.accessToken,
+          templateName: config.templateName,
+          templateLanguage: config.templateLanguage,
+          phoneColumn: config.phoneColumn,
+          sentColumn: config.sentColumn,
+        })
+      );
 
-    const response = await fetch("/api/send-messages", {
-      method: "POST",
-      body: formData,
-    });
+      const response = await fetch("/api/send-messages", {
+        method: "POST",
+        body: formData,
+      });
 
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+      if (!response.body) {
+        throw new Error("No response body from server");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-    while (true) {
-      const { done: streamDone, value } = await reader.read();
-      if (streamDone) break;
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() ?? "";
-      for (const chunk of chunks) {
-        if (!chunk.startsWith("data: ")) continue;
-        const event = JSON.parse(chunk.slice(6)) as ProgressEvent | DoneEvent;
-        if (event.type === "progress") {
-          setProgress(event.index);
-          setTotal(event.total);
-          setLog((prev) => [
-            ...prev,
-            { phone: event.phone, status: event.status, error: event.error },
-          ]);
-        } else if (event.type === "done") {
-          setCsvBase64(event.csv);
-          setDone(true);
+      while (true) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          if (!chunk.startsWith("data: ")) continue;
+          const event = JSON.parse(chunk.slice(6)) as ProgressEvent | DoneEvent;
+          if (event.type === "progress") {
+            setProgress(event.index);
+            setTotal(event.total);
+            setLog((prev) => [
+              ...prev,
+              { phone: event.phone, status: event.status, error: event.error },
+            ]);
+          } else if (event.type === "done") {
+            setCsvBase64(event.csv);
+            setDone(true);
+          }
         }
       }
+
+      // flush remaining buffer after stream closes
+      if (buffer.startsWith("data: ")) {
+        try {
+          const event = JSON.parse(buffer.slice(6)) as ProgressEvent | DoneEvent;
+          if (event.type === "progress") {
+            setProgress(event.index);
+            setTotal(event.total);
+            setLog((prev) => [
+              ...prev,
+              { phone: event.phone, status: event.status, error: event.error },
+            ]);
+          } else if (event.type === "done") {
+            setCsvBase64(event.csv);
+            setDone(true);
+          }
+        } catch { /* ignore malformed final chunk */ }
+      }
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : "Failed to send messages");
     }
   }
 
@@ -155,6 +181,10 @@ export default function SendStep({ config }: Props) {
             >
               Download updated CSV
             </button>
+          )}
+
+          {sendError && (
+            <p className="text-red-600 text-sm">{sendError}</p>
           )}
         </>
       )}
